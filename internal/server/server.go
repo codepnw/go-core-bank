@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/codepnw/go-starter-kit/internal/config"
+	acchandler "github.com/codepnw/go-starter-kit/internal/features/account/handler"
+	accrepository "github.com/codepnw/go-starter-kit/internal/features/account/repository"
+	accservice "github.com/codepnw/go-starter-kit/internal/features/account/service"
 	userhandler "github.com/codepnw/go-starter-kit/internal/features/user/handler"
 	userrepository "github.com/codepnw/go-starter-kit/internal/features/user/repository"
 	userservice "github.com/codepnw/go-starter-kit/internal/features/user/service"
 	"github.com/codepnw/go-starter-kit/internal/middleware"
 	"github.com/codepnw/go-starter-kit/pkg/database"
 	jwttoken "github.com/codepnw/go-starter-kit/pkg/jwttoken"
-	"github.com/codepnw/go-starter-kit/pkg/utils/response"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -23,6 +25,10 @@ type Server struct {
 	token  jwttoken.JWTToken
 	mid    *middleware.Middleware
 	tx     database.TxManager
+
+	// Handler
+	handlerUser    *userhandler.UserHandler
+	handlerAccount *acchandler.AccountHandler
 }
 
 func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
@@ -50,23 +56,18 @@ func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
 	}
 
 	// Gin Middleware
-	r.Use(gin.Recovery())
-	r.Use(s.mid.Logger())
-	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-	
+	s.setupGinMiddleware()
+
+	// Setup Routes Handler
+	s.setupRoutesHandler()
+
 	// Prefix Default: /api/v1
 	prefix := s.router.Group(cfg.APP.Prefix)
-	
+
 	// Register Routes
 	s.registerHealthRoutes(prefix)
 	s.registerUserRoutes(prefix)
+	s.registerAccountRoutes(prefix)
 
 	return s, nil
 }
@@ -75,31 +76,27 @@ func (s *Server) Handler() http.Handler {
 	return s.router
 }
 
-func (s *Server) registerHealthRoutes(r *gin.RouterGroup) {
-	r.GET("/health", func(c *gin.Context) {
-		response.ResponseSuccess(c, http.StatusOK, "Go Starter Kit Running...")
-	})
+func (s *Server) setupGinMiddleware() {
+	s.router.Use(gin.Recovery())
+	s.router.Use(s.mid.Logger())
+	s.router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
 }
 
-func (s *Server) registerUserRoutes(r *gin.RouterGroup) {
-	repo := userrepository.NewUserRepository(s.db)
-	service := userservice.NewUserService(s.tx, s.token, repo)
-	handler := userhandler.NewUserHandler(service)
+func (s *Server) setupRoutesHandler() {
+	// User Setup
+	userRepo := userrepository.NewUserRepository(s.db)
+	userSrv := userservice.NewUserService(s.tx, s.token, userRepo)
+	s.handlerUser = userhandler.NewUserHandler(userSrv)
 
-	// Auth Routes
-	auth := r.Group("/auth")
-	{
-		auth.POST("/register", handler.Register)
-		auth.POST("/login", handler.Login)
-		auth.POST("/refresh", handler.RefreshToken)
-
-		// Authorized
-		auth.POST("/logout", handler.Logout, s.mid.Authorized())
-	}
-
-	// Users Routes
-	users := r.Group("/users", s.mid.Authorized())
-	{
-		users.GET("/profile", handler.GetProfile)
-	}
+	// Account Setup
+	accRepo := accrepository.NewAccountRepository(s.db)
+	accSrv := accservice.NewAccountSevice(accRepo)
+	s.handlerAccount = acchandler.NewAccountHandler(accSrv)
 }

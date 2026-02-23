@@ -97,6 +97,6 @@ func (s *Server) setupRoutesHandler() {
 
 	// Account Setup
 	accRepo := accrepository.NewAccountRepository(s.db)
-	accSrv := accservice.NewAccountSevice(accRepo)
+	accSrv := accservice.NewAccountSevice(s.tx, accRepo)
 	s.handlerAccount = acchandler.NewAccountHandler(accSrv)
 }

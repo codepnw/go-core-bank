@@ -13,6 +13,11 @@ type AccountRepository interface {
 	InsertAccount(ctx context.Context, acc *account.Account) error
 	FindAllAccounts(ctx context.Context, ownerID string) ([]*account.Account, error)
 	FindAccountByID(ctx context.Context, ownerID string, accountID int64) (*account.Account, error)
+
+	// Transaction
+	UpdateAccountBalance(ctx context.Context, tx *sql.Tx, accountID, balance int64) (*account.Account, error)
+	// Entry Table
+	InsertEntry(ctx context.Context, tx *sql.Tx, accountID, amount int64) error
 }
 
 type accountRepository struct {
@@ -93,4 +98,35 @@ func (r *accountRepository) FindAccountByID(ctx context.Context, ownerID string,
 		return nil, err
 	}
 	return &acc, nil
+}
+
+// UpdateAccountBalance implements AccountRepository.
+func (r *accountRepository) UpdateAccountBalance(ctx context.Context, tx *sql.Tx, accountID int64, balance int64) (*account.Account, error) {
+	var acc account.Account
+	query := `
+		UPDATE accounts SET balance = balance + $1
+		WHERE id = $2 RETURNING id, title, balance
+	`
+	err := tx.QueryRowContext(ctx, query, balance, accountID).Scan(
+		&acc.ID,
+		&acc.Title,
+		&acc.Balance,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errs.ErrAccountNotFound
+		}
+		return nil, err
+	}
+	return &acc, nil
+}
+
+// InsertEntry implements AccountRepository.
+func (r *accountRepository) InsertEntry(ctx context.Context, tx *sql.Tx, accountID int64, amount int64) error {
+	query := `INSERT INTO entries (account_id, amount) VALUES ($1, $2)`
+	_, err := tx.ExecContext(ctx, query, accountID, amount)
+	if err != nil {
+		return err
+	}
+	return nil
 }

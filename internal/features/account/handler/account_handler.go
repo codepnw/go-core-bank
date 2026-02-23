@@ -2,7 +2,6 @@ package acchandler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/codepnw/go-starter-kit/internal/auth"
 	"github.com/codepnw/go-starter-kit/internal/errs"
@@ -59,22 +58,17 @@ func (h *AccountHandler) GetAllAccounts(c *gin.Context) {
 		return
 	}
 
-	var accounts []*AccountResponse
+	var accounts []*accountResponse
 
 	for _, item := range data {
-		accounts = append(accounts, &AccountResponse{
-			ID:             item.ID,
-			Title:          item.Title,
-			Balance:        item.Balance,
-			BalanceDisplay: formatBalanceString(item.Balance),
-		})
+		accounts = append(accounts, formatAccountResponse(item))
 	}
-	
+
 	response.ResponseData(c, http.StatusOK, accounts)
 }
 
 func (h *AccountHandler) GetAccountByID(c *gin.Context) {
-	accountID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID := getAccountID(c)
 
 	userID, err := auth.GetUserIDFromContext(c.Request.Context())
 	if err != nil {
@@ -93,12 +87,30 @@ func (h *AccountHandler) GetAccountByID(c *gin.Context) {
 		return
 	}
 
-	resp := AccountResponse{
-		ID:             data.ID,
-		Title:          data.Title,
-		Balance:        data.Balance,
-		BalanceDisplay: formatBalanceString(data.Balance),
+	response.ResponseData(c, http.StatusOK, formatAccountResponse(data))
+}
+
+func (h *AccountHandler) DepositMoney(c *gin.Context) {
+	accountID := getAccountID(c)
+
+	req := new(AccountDepositReq)
+	if err := c.ShouldBindJSON(req); err != nil {
+		response.ResponseError(c, http.StatusBadRequest, err)
+		return
 	}
-	
-	response.ResponseData(c, http.StatusOK, resp)
+
+	resp, err := h.service.DepositMoney(c.Request.Context(), accountID, req.Amount)
+	if err != nil {
+		switch err {
+		case errs.ErrAccountNotFound:
+			response.ResponseError(c, http.StatusNotFound, err)
+		case errs.ErrAmountGeaterThanZero:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		default:
+			response.ResponseError(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	response.ResponseData(c, http.StatusOK, formatAccountResponse(resp))
 }

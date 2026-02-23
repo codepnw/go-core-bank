@@ -42,5 +42,6 @@ func (s *Server) registerAccountRoutes(r *gin.RouterGroup) {
 		accounts.POST("/", handler.CreateAccount)
 		accounts.GET("/", handler.GetAllAccounts)
 		accounts.GET("/:id", handler.GetAccountByID)
+		accounts.POST("/:id/deposit", handler.DepositMoney)
 	}
 }

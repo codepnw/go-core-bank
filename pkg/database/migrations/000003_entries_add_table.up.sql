@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS entries (
+    id BIGSERIAL PRIMARY KEY,
+    account_id BIGINT NOT NULL REFERENCES accounts(id),
+    amount BIGINT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);

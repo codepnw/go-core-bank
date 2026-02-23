@@ -14,7 +14,7 @@ type CreateAccountReq struct {
 	Balance int64  `json:"balance"`
 }
 
-type AccountDepositReq struct {
+type AccountAmountReq struct {
 	Amount int64 `json:"amount" binding:"required,gt=0"`
 }
 

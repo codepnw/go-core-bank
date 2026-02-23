@@ -93,13 +93,38 @@ func (h *AccountHandler) GetAccountByID(c *gin.Context) {
 func (h *AccountHandler) DepositMoney(c *gin.Context) {
 	accountID := getAccountID(c)
 
-	req := new(AccountDepositReq)
+	req := new(AccountAmountReq)
 	if err := c.ShouldBindJSON(req); err != nil {
 		response.ResponseError(c, http.StatusBadRequest, err)
 		return
 	}
 
 	resp, err := h.service.DepositMoney(c.Request.Context(), accountID, req.Amount)
+	if err != nil {
+		switch err {
+		case errs.ErrAccountNotFound:
+			response.ResponseError(c, http.StatusNotFound, err)
+		case errs.ErrAmountGeaterThanZero:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		default:
+			response.ResponseError(c, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	response.ResponseData(c, http.StatusOK, formatAccountResponse(resp))
+}
+
+func (h *AccountHandler) WithdrawMoney(c *gin.Context) {
+	accountID := getAccountID(c)
+
+	req := new(AccountAmountReq)
+	if err := c.ShouldBindJSON(req); err != nil {
+		response.ResponseError(c, http.StatusBadRequest, err)
+		return
+	}
+
+	resp, err := h.service.WithdrawMoney(c.Request.Context(), accountID, req.Amount)
 	if err != nil {
 		switch err {
 		case errs.ErrAccountNotFound:

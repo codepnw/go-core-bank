@@ -43,5 +43,6 @@ func (s *Server) registerAccountRoutes(r *gin.RouterGroup) {
 		accounts.GET("/", handler.GetAllAccounts)
 		accounts.GET("/:id", handler.GetAccountByID)
 		accounts.POST("/:id/deposit", handler.DepositMoney)
+		accounts.POST("/:id/withdraw", handler.WithdrawMoney)
 	}
 }

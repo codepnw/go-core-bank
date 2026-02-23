@@ -17,6 +17,7 @@ type AccountService interface {
 	GetAllAccounts(ctx context.Context, ownerID string) ([]*account.Account, error)
 	GetAccountByID(ctx context.Context, ownerID string, accountID int64) (*account.Account, error)
 	DepositMoney(ctx context.Context, accountID, amount int64) (*account.Account, error)
+	WithdrawMoney(ctx context.Context, accountID, amount int64) (*account.Account, error)
 }
 
 type accountService struct {
@@ -67,18 +68,45 @@ func (s *accountService) DepositMoney(ctx context.Context, accountID int64, amou
 	var acc *account.Account
 
 	err := s.tx.WithTx(ctx, func(tx *sql.Tx) error {
-		// Insert Entry 
+		// Insert Entry
 		if err := s.repo.InsertEntry(ctx, tx, accountID, amount); err != nil {
 			return fmt.Errorf("insert entry failed: %w", err)
 		}
-		
+
 		// Update Account Balance
-		resp, err := s.repo.UpdateAccountBalance(ctx, tx, accountID, amount)
+		resp, err := s.repo.UpdateDepositBalance(ctx, tx, accountID, amount)
 		if err != nil {
 			return fmt.Errorf("update balance failed: %w", err)
 		}
 		acc = resp
 
+		return nil
+	})
+	return acc, err
+}
+
+func (s *accountService) WithdrawMoney(ctx context.Context, accountID, amount int64) (*account.Account, error) {
+	ctx, cancel := context.WithTimeout(ctx, config.ContextTimeout)
+	defer cancel()
+
+	if amount <= 0 {
+		return nil, errs.ErrAmountGeaterThanZero
+	}
+
+	var acc *account.Account
+
+	err := s.tx.WithTx(ctx, func(tx *sql.Tx) error {
+		// Insert Entry
+		if err := s.repo.InsertEntry(ctx, tx, accountID, -amount); err != nil {
+			return fmt.Errorf("insert entry failed: %w", err)
+		}
+
+		resp, err := s.repo.UpdateWithdrawBalance(ctx, tx, accountID, amount)
+		if err != nil {
+			return err
+		}
+		acc = resp 
+		
 		return nil
 	})
 	return acc, err

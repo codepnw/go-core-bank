@@ -32,6 +32,7 @@ type Server struct {
 }
 
 func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 
 	// JWT Token

@@ -9,6 +9,8 @@
 go.work
 # End of https://www.toptal.com/developers/gitignore/api/go
 
+tmp
 .env
 *.txt
+api-collection
 README.md

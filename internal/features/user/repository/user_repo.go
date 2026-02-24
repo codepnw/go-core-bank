@@ -33,10 +33,17 @@ func NewUserRepository(db *sql.DB) UserRepository {
 
 func (r *userRepository) InsertUserTx(ctx context.Context, tx *sql.Tx, u *user.User) error {
 	query := `
-		INSERT INTO users (email, password)
-		VALUES ($1, $2) RETURNING id, created_at, updated_at
+		INSERT INTO users (email, password, first_name, last_name)
+		VALUES ($1, $2, $3, $4) RETURNING id, created_at, updated_at
 	`
-	if err := tx.QueryRowContext(ctx, query, u.Email, u.Password).Scan(
+	if err := tx.QueryRowContext(
+		ctx, 
+		query, 
+		u.Email, 
+		u.Password,
+		u.FirstName,
+		u.LastName,
+	).Scan(
 		&u.ID,
 		&u.CreatedAt,
 		&u.UpdatedAt,

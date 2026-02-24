@@ -9,6 +9,9 @@ import (
 	acchandler "github.com/codepnw/go-starter-kit/internal/features/account/handler"
 	accrepository "github.com/codepnw/go-starter-kit/internal/features/account/repository"
 	accservice "github.com/codepnw/go-starter-kit/internal/features/account/service"
+	transferhandler "github.com/codepnw/go-starter-kit/internal/features/transfer/handler"
+	transferrepository "github.com/codepnw/go-starter-kit/internal/features/transfer/repository"
+	transferservice "github.com/codepnw/go-starter-kit/internal/features/transfer/service"
 	userhandler "github.com/codepnw/go-starter-kit/internal/features/user/handler"
 	userrepository "github.com/codepnw/go-starter-kit/internal/features/user/repository"
 	userservice "github.com/codepnw/go-starter-kit/internal/features/user/service"
@@ -27,8 +30,9 @@ type Server struct {
 	tx     database.TxManager
 
 	// Handler
-	handlerUser    *userhandler.UserHandler
-	handlerAccount *acchandler.AccountHandler
+	handlerUser     *userhandler.UserHandler
+	handlerAccount  *acchandler.AccountHandler
+	handlerTransfer *transferhandler.TransferHandler
 }
 
 func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
@@ -69,6 +73,7 @@ func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
 	s.registerHealthRoutes(prefix)
 	s.registerUserRoutes(prefix)
 	s.registerAccountRoutes(prefix)
+	s.registerTransferRoutes(prefix)
 
 	return s, nil
 }
@@ -100,4 +105,9 @@ func (s *Server) setupRoutesHandler() {
 	accRepo := accrepository.NewAccountRepository(s.db)
 	accSrv := accservice.NewAccountSevice(s.tx, accRepo)
 	s.handlerAccount = acchandler.NewAccountHandler(accSrv)
+
+	// Transfer Setup
+	tranRepo := transferrepository.NewTransferRepository(s.db)
+	tranSrv := transferservice.NewTransferService(s.tx, tranRepo, accRepo, userRepo)
+	s.handlerTransfer = transferhandler.NewTransferHandler(tranSrv)
 }

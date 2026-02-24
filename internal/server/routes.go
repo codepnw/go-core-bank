@@ -46,3 +46,12 @@ func (s *Server) registerAccountRoutes(r *gin.RouterGroup) {
 		accounts.POST("/:id/withdraw", handler.WithdrawMoney)
 	}
 }
+
+func (s *Server) registerTransferRoutes(r *gin.RouterGroup) {
+	handler := s.handlerTransfer
+
+	transfers := r.Group("/transfers", s.mid.Authorized())
+	{
+		transfers.POST("/", handler.TransferMoney)
+	}
+}

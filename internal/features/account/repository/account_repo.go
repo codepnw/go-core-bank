@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"log"
 
 	"github.com/codepnw/go-starter-kit/internal/errs"
 	"github.com/codepnw/go-starter-kit/internal/features/account"
@@ -11,14 +12,13 @@ import (
 
 type AccountRepository interface {
 	InsertAccount(ctx context.Context, acc *account.Account) error
-	FindAllAccounts(ctx context.Context, ownerID string) ([]*account.Account, error)
-	FindAccountByID(ctx context.Context, ownerID string, accountID int64) (*account.Account, error)
+	FindAccountsByOwner(ctx context.Context, ownerID string) ([]*account.Account, error)
+	FindAccountByID(ctx context.Context, accountID int64) (*account.Account, error)
 
 	// Transaction
-	UpdateDepositBalance(ctx context.Context, tx *sql.Tx, accountID, balance int64) (*account.Account, error)
-	UpdateWithdrawBalance(ctx context.Context, tx *sql.Tx, accountID, balance int64) (*account.Account, error)
+	UpdateAccountBalanceTx(ctx context.Context, tx *sql.Tx, accountID, balance int64) (*account.Account, error)
 	// Entry Table
-	InsertEntry(ctx context.Context, tx *sql.Tx, accountID, amount int64) error
+	InsertEntryTx(ctx context.Context, tx *sql.Tx, accountID, amount int64) error
 }
 
 type accountRepository struct {
@@ -46,8 +46,8 @@ func (r *accountRepository) InsertAccount(ctx context.Context, acc *account.Acco
 	return nil
 }
 
-// FindAllAccounts implements AccountRepository.
-func (r *accountRepository) FindAllAccounts(ctx context.Context, ownerID string) ([]*account.Account, error) {
+// FindAccountsByOwner implements AccountRepository.
+func (r *accountRepository) FindAccountsByOwner(ctx context.Context, ownerID string) ([]*account.Account, error) {
 	var accounts []*account.Account
 	query := `
 		SELECT id, title, balance FROM accounts
@@ -81,13 +81,15 @@ func (r *accountRepository) FindAllAccounts(ctx context.Context, ownerID string)
 }
 
 // FindAccountByID implements AccountRepository.
-func (r *accountRepository) FindAccountByID(ctx context.Context, ownerID string, accountID int64) (*account.Account, error) {
+func (r *accountRepository) FindAccountByID(ctx context.Context, accountID int64) (*account.Account, error) {
 	var acc account.Account
 	query := `
-		SELECT title, balance, updated_at
-		FROM accounts WHERE id = $1 AND owner_id = $2
+		SELECT id, owner_id, title, balance, updated_at
+		FROM accounts WHERE id = $1
 	`
-	err := r.db.QueryRowContext(ctx, query, accountID, ownerID).Scan(
+	err := r.db.QueryRowContext(ctx, query, accountID).Scan(
+		&acc.ID,
+		&acc.OwnerID,
 		&acc.Title,
 		&acc.Balance,
 		&acc.UpdatedAt,
@@ -101,35 +103,15 @@ func (r *accountRepository) FindAccountByID(ctx context.Context, ownerID string,
 	return &acc, nil
 }
 
-// UpdateDepositBalance implements AccountRepository.
-func (r *accountRepository) UpdateDepositBalance(ctx context.Context, tx *sql.Tx, accountID int64, balance int64) (*account.Account, error) {
+// UpdateAccountBalanceTx implements AccountRepository.
+func (r *accountRepository) UpdateAccountBalanceTx(ctx context.Context, tx *sql.Tx, accountID int64, balance int64) (*account.Account, error) {
 	var acc account.Account
 	query := `
 		UPDATE accounts SET balance = balance + $1
-		WHERE id = $2 RETURNING id, title, balance
-	`
-	err := tx.QueryRowContext(ctx, query, balance, accountID).Scan(
-		&acc.ID,
-		&acc.Title,
-		&acc.Balance,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errs.ErrAccountNotFound
-		}
-		return nil, err
-	}
-	return &acc, nil
-}
-
-// UpdateWithdrawBalance implements AccountRepository.
-func (r *accountRepository) UpdateWithdrawBalance(ctx context.Context, tx *sql.Tx, accountID int64, balance int64) (*account.Account, error) {
-	var acc account.Account
-	query := `
-		UPDATE accounts SET balance = balance - $1
-		WHERE id = $2 AND balance >= $1
+		WHERE id = $2 AND (balance + $1 >= 0)
 		RETURNING id, title, balance
 	`
+	log.Println("ACC ID REPO: ", accountID)
 	err := tx.QueryRowContext(ctx, query, balance, accountID).Scan(
 		&acc.ID,
 		&acc.Title,
@@ -137,15 +119,16 @@ func (r *accountRepository) UpdateWithdrawBalance(ctx context.Context, tx *sql.T
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, errs.ErrAccountNotFound
+			return nil, errs.ErrAccountNotFoundOrMoneyNotEnough
 		}
 		return nil, err
 	}
 	return &acc, nil
 }
 
-// InsertEntry implements AccountRepository.
-func (r *accountRepository) InsertEntry(ctx context.Context, tx *sql.Tx, accountID int64, amount int64) error {
+// Entries Table
+// InsertEntryTx implements AccountRepository.
+func (r *accountRepository) InsertEntryTx(ctx context.Context, tx *sql.Tx, accountID int64, amount int64) error {
 	query := `INSERT INTO entries (account_id, amount) VALUES ($1, $2)`
 	_, err := tx.ExecContext(ctx, query, accountID, amount)
 	if err != nil {

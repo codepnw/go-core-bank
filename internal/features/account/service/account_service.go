@@ -45,15 +45,23 @@ func (s *accountService) GetAllAccounts(ctx context.Context, ownerID string) ([]
 	ctx, cancel := context.WithTimeout(ctx, config.ContextTimeout)
 	defer cancel()
 
-	return s.repo.FindAllAccounts(ctx, ownerID)
+	return s.repo.FindAccountsByOwner(ctx, ownerID)
 }
 
 // GetAccountByID implements AccountService.
-func (s *accountService) GetAccountByID(ctx context.Context, ownerID string, accountID int64) (*account.Account, error) {
+func (s *accountService) GetAccountByID(ctx context.Context, userID string, accountID int64) (*account.Account, error) {
 	ctx, cancel := context.WithTimeout(ctx, config.ContextTimeout)
 	defer cancel()
 
-	return s.repo.FindAccountByID(ctx, ownerID, accountID)
+	data, err := s.repo.FindAccountByID(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+
+	if userID != data.OwnerID {
+		return nil, errs.ErrForbidden
+	}
+	return data, nil
 }
 
 // DepositMoney implements AccountService.
@@ -69,12 +77,12 @@ func (s *accountService) DepositMoney(ctx context.Context, accountID int64, amou
 
 	err := s.tx.WithTx(ctx, func(tx *sql.Tx) error {
 		// Insert Entry
-		if err := s.repo.InsertEntry(ctx, tx, accountID, amount); err != nil {
+		if err := s.repo.InsertEntryTx(ctx, tx, accountID, amount); err != nil {
 			return fmt.Errorf("insert entry failed: %w", err)
 		}
 
 		// Update Account Balance
-		resp, err := s.repo.UpdateDepositBalance(ctx, tx, accountID, amount)
+		resp, err := s.repo.UpdateAccountBalanceTx(ctx, tx, accountID, amount)
 		if err != nil {
 			return fmt.Errorf("update balance failed: %w", err)
 		}
@@ -97,16 +105,16 @@ func (s *accountService) WithdrawMoney(ctx context.Context, accountID, amount in
 
 	err := s.tx.WithTx(ctx, func(tx *sql.Tx) error {
 		// Insert Entry
-		if err := s.repo.InsertEntry(ctx, tx, accountID, -amount); err != nil {
+		if err := s.repo.InsertEntryTx(ctx, tx, accountID, -amount); err != nil {
 			return fmt.Errorf("insert entry failed: %w", err)
 		}
 
-		resp, err := s.repo.UpdateWithdrawBalance(ctx, tx, accountID, amount)
+		resp, err := s.repo.UpdateAccountBalanceTx(ctx, tx, accountID, -amount)
 		if err != nil {
 			return err
 		}
-		acc = resp 
-		
+		acc = resp
+
 		return nil
 	})
 	return acc, err

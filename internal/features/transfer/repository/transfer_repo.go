@@ -7,6 +7,7 @@ import (
 	"github.com/codepnw/go-starter-kit/internal/features/transfer"
 )
 
+//go:generate mockgen -source=transfer_repo.go -destination=transfer_repo_mock.go -package=transferrepository
 type TransferRepository interface {
 	InsertTransferTx(ctx context.Context, tx *sql.Tx, input *transfer.Transfer) error
 }

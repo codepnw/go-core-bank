@@ -10,6 +10,7 @@ import (
 	"github.com/codepnw/go-starter-kit/internal/features/account"
 )
 
+//go:generate mockgen -source=account_repo.go -destination=account_repo_mock.go -package=accrepository
 type AccountRepository interface {
 	InsertAccount(ctx context.Context, acc *account.Account) error
 	FindAccountsByOwner(ctx context.Context, ownerID string) ([]*account.Account, error)

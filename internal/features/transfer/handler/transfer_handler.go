@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/codepnw/go-starter-kit/internal/auth"
+	"github.com/codepnw/go-starter-kit/internal/errs"
 	"github.com/codepnw/go-starter-kit/internal/features/transfer"
 	transferservice "github.com/codepnw/go-starter-kit/internal/features/transfer/service"
 	"github.com/codepnw/go-starter-kit/pkg/utils/response"
@@ -38,7 +39,20 @@ func (h *TransferHandler) TransferMoney(c *gin.Context) {
 	}
 	resp, err := h.service.TransferMoney(c.Request.Context(), userID, input)
 	if err != nil {
-		response.ResponseError(c, http.StatusInternalServerError, err)
+		switch err {
+		case errs.ErrTransferSameAccount:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		case errs.ErrAmountGeaterThanZero:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		case errs.ErrAccountNotFound:
+			response.ResponseError(c, http.StatusNotFound, err)
+		case errs.ErrUserNotFound:
+			response.ResponseError(c, http.StatusNotFound, err)
+		case errs.ErrAccountNotFoundOrMoneyNotEnough:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		default:
+			response.ResponseError(c, http.StatusInternalServerError, err)
+		}
 		return
 	}
 

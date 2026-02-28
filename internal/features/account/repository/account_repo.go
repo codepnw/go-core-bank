@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"log"
 
 	"github.com/codepnw/go-starter-kit/internal/errs"
 	"github.com/codepnw/go-starter-kit/internal/features/account"
@@ -112,7 +111,6 @@ func (r *accountRepository) UpdateAccountBalanceTx(ctx context.Context, tx *sql.
 		WHERE id = $2 AND (balance + $1 >= 0)
 		RETURNING id, title, balance
 	`
-	log.Println("ACC ID REPO: ", accountID)
 	err := tx.QueryRowContext(ctx, query, balance, accountID).Scan(
 		&acc.ID,
 		&acc.Title,

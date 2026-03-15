@@ -21,6 +21,10 @@ docker-up:
 # Dev Mode: build db only
 docker-db:
 	@docker compose up -d db
+	
+# Dev Mode: build redis only
+docker-redis:
+	@docker compose up -d redis
 
 # clear volumns data
 docker-clear:

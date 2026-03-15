@@ -29,7 +29,12 @@ services:
       - "${DB_PORT}:5432"                 # .env DB_PORT
     volumes:
       - pg_data:/var/lib/postgresql/data  # PostgreSQL 17 and below
-
+  
+  redis:
+      image: redis:7-alpine
+      container_name: core-bank-redis
+      ports:
+        - "6379:6379" 
       
 volumes:
   pg_data:

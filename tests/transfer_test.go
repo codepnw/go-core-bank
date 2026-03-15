@@ -14,12 +14,14 @@ import (
 	transferservice "github.com/codepnw/go-starter-kit/internal/features/transfer/service"
 	userrepository "github.com/codepnw/go-starter-kit/internal/features/user/repository"
 	"github.com/codepnw/go-starter-kit/pkg/database"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTransfer_Deadlock(t *testing.T) {
 	// Arrange
 	cleanDB(testDB)
+	cleanRedis(testRedis)
 
 	userA := createTestUser(t, testDB, "test1@mail.com", "test", "one")
 	userB := createTestUser(t, testDB, "example1@mail.com", "test", "example")
@@ -30,10 +32,17 @@ func TestTransfer_Deadlock(t *testing.T) {
 	// DI
 	tx := database.NewDBTransaction(testDB)
 	tranRepo := transferrepository.NewTransferRepository(testDB)
+	tranRedis := transferrepository.NewTransferRedisRepository(testRedis)
 	accRepo := accrepository.NewAccountRepository(testDB)
 	userRepo := userrepository.NewUserRepository(testDB)
 
-	service := transferservice.NewTransferService(tx, tranRepo, accRepo, userRepo)
+	service := transferservice.NewTransferService(&transferservice.TransferServiceDeps{
+		Tx:            tx,
+		TransferRepo:  tranRepo,
+		TransferRedis: tranRedis,
+		AccountRepo:   accRepo,
+		UserRepo:      userRepo,
+	})
 
 	// Act
 	n := 10
@@ -58,10 +67,13 @@ func TestTransfer_Deadlock(t *testing.T) {
 			}
 			ctxAuth := context.WithValue(ctx, config.ContextUserIDKey, ownerID)
 
+			uniqueIdemKey := fmt.Sprintf("mock-idem-key-00%d", i)
+
 			_, err := service.TransferMoney(ctxAuth, ownerID, &transfer.Transfer{
-				FromAccountID: int64(fromAccountID),
-				ToAccountID:   int64(toAccountID),
-				Amount:        int64(amount),
+				FromAccountID:  int64(fromAccountID),
+				ToAccountID:    int64(toAccountID),
+				Amount:         int64(amount),
+				IdempotencyKey: uniqueIdemKey,
 			})
 
 			errs <- err
@@ -97,6 +109,14 @@ func cleanDB(db *sql.DB) {
 		log.Fatalf("Clear Test DB failed: %v", err)
 	}
 	log.Println("Clear Test DB Successfully")
+}
+
+func cleanRedis(rdb *redis.Client) {
+	err := rdb.FlushDB(context.Background()).Err()
+	if err != nil {
+		log.Fatalf("Clear Test Redis failed: %v", err)
+	}
+	log.Println("Clear Test Redis Successfully")
 }
 
 func createTestUser(t *testing.T, db *sql.DB, email, firstName, lastName string) string {

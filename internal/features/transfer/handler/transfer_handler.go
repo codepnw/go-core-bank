@@ -33,9 +33,10 @@ func (h *TransferHandler) TransferMoney(c *gin.Context) {
 	}
 
 	input := &transfer.Transfer{
-		FromAccountID: req.FromAccountID,
-		ToAccountID:   req.ToAccountID,
-		Amount:        req.Amount,
+		FromAccountID:  req.FromAccountID,
+		ToAccountID:    req.ToAccountID,
+		Amount:         req.Amount,
+		IdempotencyKey: req.IdempotencyKey,
 	}
 	resp, err := h.service.TransferMoney(c.Request.Context(), userID, input)
 	if err != nil {
@@ -49,6 +50,8 @@ func (h *TransferHandler) TransferMoney(c *gin.Context) {
 		case errs.ErrUserNotFound:
 			response.ResponseError(c, http.StatusNotFound, err)
 		case errs.ErrAccountNotFoundOrMoneyNotEnough:
+			response.ResponseError(c, http.StatusBadRequest, err)
+		case errs.ErrDuplicateTransfer:
 			response.ResponseError(c, http.StatusBadRequest, err)
 		default:
 			response.ResponseError(c, http.StatusInternalServerError, err)

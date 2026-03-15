@@ -23,10 +23,17 @@ func NewTransferRepository(db *sql.DB) TransferRepository {
 // InsertTransferTx implements TransferRepository.
 func (r *transferRepository) InsertTransferTx(ctx context.Context, tx *sql.Tx, input *transfer.Transfer) error {
 	query := `
-		INSERT INTO transfers (from_account_id, to_account_id, amount)
-		VALUES ($1, $2, $3) RETURNING id, created_at
+		INSERT INTO transfers (from_account_id, to_account_id, amount, idempotency_key)
+		VALUES ($1, $2, $3, $4) RETURNING id, created_at
 	`
-	err := tx.QueryRowContext(ctx, query, input.FromAccountID, input.ToAccountID, input.Amount).Scan(
+	err := tx.QueryRowContext(
+		ctx, 
+		query, 
+		input.FromAccountID, 
+		input.ToAccountID, 
+		input.Amount,
+		input.IdempotencyKey,
+	).Scan(
 		&input.ID,
 		&input.CreatedAt,
 	)

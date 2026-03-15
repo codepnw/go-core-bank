@@ -1,37 +1,56 @@
 package tests
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
-var testDB *sql.DB
+var (
+	testDB    *sql.DB
+	testRedis *redis.Client
+)
 
 func TestMain(m *testing.M) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
 	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("Test Load Env not found: %v\n", err)
 	}
-
-	var err error
-
-	testDB, err = sql.Open("postgres", os.Getenv("DB_TEST_URL"))
+	
+	// Init DB
+	db, err := sql.Open("postgres", os.Getenv("DB_TEST_URL"))
 	if err != nil {
 		log.Fatalf("Connect Test DB failed: %v", err)
 	}
+	testDB = db
+	
+	defer db.Close()
 
-	if err := testDB.Ping(); err != nil {
+	if err := testDB.PingContext(ctx); err != nil {
 		log.Fatalf("Ping Test DB failed: %v", err)
 	}
-	log.Println("Content Test DB (corebank_test) Successfully")
+	log.Println("Connect Test DB (corebank_test) Successfully")
 
-	code := m.Run()
+	// Init Redis
+	options := &redis.Options{
+		Addr:     os.Getenv("REDIS_TEST_ADDR"),
+		Password: os.Getenv("REDIS_TEST_PASSWORD"),
+		DB:       0, // Default DB
+	}
+	rdb := redis.NewClient(options)
+	testRedis = rdb
 
-	testDB.Close()
-	log.Println("Close Test DB Successfully")
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatalf("Ping Redis failed: %v", err)
+	}
 
-	os.Exit(code)
+	os.Exit(m.Run())
 }

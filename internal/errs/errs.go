@@ -23,4 +23,5 @@ var (
 var (
 	ErrTransferSameAccount = errors.New("cannot transfer to the same account")
 	ErrForbidden           = errors.New("forbidden: you do not have permission to access this resource")
+	ErrDuplicateTransfer   = errors.New("duplicate transfer")
 )

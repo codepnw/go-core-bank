@@ -20,14 +20,16 @@ import (
 	jwttoken "github.com/codepnw/go-starter-kit/pkg/jwttoken"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 type Server struct {
-	db     *sql.DB
-	router *gin.Engine
-	token  jwttoken.JWTToken
-	mid    *middleware.Middleware
-	tx     database.TxManager
+	db          *sql.DB
+	redisClient *redis.Client
+	router      *gin.Engine
+	token       jwttoken.JWTToken
+	mid         *middleware.Middleware
+	tx          database.TxManager
 
 	// Handler
 	handlerUser     *userhandler.UserHandler
@@ -51,13 +53,20 @@ func NewServer(cfg *config.EnvConfig, db *sql.DB) (*Server, error) {
 	// DB Transaction
 	tx := database.NewDBTransaction(db)
 
+	// Redis Init
+	redisClient, err := database.InitRedis(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	// Denpendency Injection
 	s := &Server{
-		db:     db,
-		router: r,
-		token:  token,
-		mid:    mid,
-		tx:     tx,
+		db:          db,
+		redisClient: redisClient,
+		router:      r,
+		token:       token,
+		mid:         mid,
+		tx:          tx,
 	}
 
 	// Gin Middleware
@@ -108,6 +117,13 @@ func (s *Server) setupRoutesHandler() {
 
 	// Transfer Setup
 	tranRepo := transferrepository.NewTransferRepository(s.db)
-	tranSrv := transferservice.NewTransferService(s.tx, tranRepo, accRepo, userRepo)
+	tranRedis := transferrepository.NewTransferRedisRepository(s.redisClient)
+	tranSrv := transferservice.NewTransferService(&transferservice.TransferServiceDeps{
+		Tx:            s.tx,
+		TransferRepo:  tranRepo,
+		TransferRedis: tranRedis,
+		AccountRepo:   accRepo,
+		UserRepo:      userRepo,
+	})
 	s.handlerTransfer = transferhandler.NewTransferHandler(tranSrv)
 }

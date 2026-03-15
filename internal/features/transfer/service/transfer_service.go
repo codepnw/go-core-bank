@@ -19,18 +19,28 @@ type TransferService interface {
 }
 
 type transferService struct {
-	tx           database.TxManager
-	transferRepo transferrepository.TransferRepository
-	accountRepo  accrepository.AccountRepository
-	userRepo     userrepository.UserRepository
+	tx            database.TxManager
+	transferRepo  transferrepository.TransferRepository
+	transferRedis transferrepository.TransferRedisRepository
+	accountRepo   accrepository.AccountRepository
+	userRepo      userrepository.UserRepository
 }
 
-func NewTransferService(tx database.TxManager, transferRepo transferrepository.TransferRepository, accountRepo accrepository.AccountRepository, userRepo userrepository.UserRepository) TransferService {
+type TransferServiceDeps struct {
+	Tx            database.TxManager
+	TransferRepo  transferrepository.TransferRepository
+	TransferRedis transferrepository.TransferRedisRepository
+	AccountRepo   accrepository.AccountRepository
+	UserRepo      userrepository.UserRepository
+}
+
+func NewTransferService(deps *TransferServiceDeps) TransferService {
 	return &transferService{
-		tx:           tx,
-		transferRepo: transferRepo,
-		accountRepo:  accountRepo,
-		userRepo:     userRepo,
+		tx:            deps.Tx,
+		transferRepo:  deps.TransferRepo,
+		transferRedis: deps.TransferRedis,
+		accountRepo:   deps.AccountRepo,
+		userRepo:      deps.UserRepo,
 	}
 }
 
@@ -47,7 +57,7 @@ type userInfo struct {
 }
 
 // TransferMoney implements TransferService.
-func (s *transferService) TransferMoney(ctx context.Context, userID string, input *transfer.Transfer) (*TransferMoneyResponse, error) {
+func (s *transferService) TransferMoney(ctx context.Context, userID string, input *transfer.Transfer) (resp *TransferMoneyResponse, err error) {
 	ctx, cancel := context.WithTimeout(ctx, config.ContextTimeout)
 	defer cancel()
 
@@ -58,40 +68,29 @@ func (s *transferService) TransferMoney(ctx context.Context, userID string, inpu
 		return nil, errs.ErrAmountGeaterThanZero
 	}
 
-	// Data Response
-	resp := &TransferMoneyResponse{}
-
-	// Get From Account Data
-	fromAccData, err := s.accountRepo.FindAccountByID(ctx, input.FromAccountID)
+	// Redis: Check Idempotency Key
+	isNewKey, err := s.transferRedis.CheckIdempotencyKey(ctx, input.IdempotencyKey)
 	if err != nil {
-		return nil, fmt.Errorf("get from-account failed: %w", err)
+		return nil, fmt.Errorf("check redis idem key failed: %w", err)
 	}
-	if userID != fromAccData.OwnerID {
-		return nil, errs.ErrForbidden
+	if !isNewKey {
+		return nil, errs.ErrDuplicateTransfer
 	}
 
-	// Get To Account Data
-	toAccData, err := s.accountRepo.FindAccountByID(ctx, input.ToAccountID)
+	// If Error Delete Redis-Key
+	defer func() {
+		if err != nil {
+			_ = s.transferRedis.DeleteIdempotencyKey(ctx, input.IdempotencyKey)
+		}
+	}()
+	
+	// Validate Transfer Data Response
+	resp, err = s.validateTransferData(ctx, userID, input)
 	if err != nil {
-		return nil, fmt.Errorf("get to-account failed: %w", err)
+		return nil, err
 	}
 
-	// Get From Account User
-	fromUserData, err := s.userRepo.FindUserByID(ctx, fromAccData.OwnerID)
-	if err != nil {
-		return nil, fmt.Errorf("get from-user failed: %w", err)
-	}
-	resp.Sender.FullName = formatAccountFullName(fromUserData.FirstName, fromUserData.LastName)
-
-	// Get To Account User
-	toUserData, err := s.userRepo.FindUserByID(ctx, toAccData.OwnerID)
-	if err != nil {
-		return nil, fmt.Errorf("get to-user failed: %w", err)
-	}
-	resp.Receiver.FullName = formatAccountFullName(toUserData.FirstName, toUserData.LastName)
-
-	// ------------- Start Transaction ----------------
-	//
+	// Start Transaction
 	err = s.tx.WithTx(ctx, func(tx *sql.Tx) error {
 		// Create Transfer
 		if err := s.transferRepo.InsertTransferTx(ctx, tx, input); err != nil {
@@ -143,7 +142,47 @@ func (s *transferService) TransferMoney(ctx context.Context, userID string, inpu
 
 		return nil
 	})
+	if err != nil {
+		// if error defer delete redis-key
+		return nil, err
+	}
 	return resp, err
+}
+
+func (s *transferService) validateTransferData(ctx context.Context, userID string, input *transfer.Transfer) (*TransferMoneyResponse, error) {
+	// Data Response
+	resp := &TransferMoneyResponse{}
+
+	// Get From Account Data
+	fromAccData, err := s.accountRepo.FindAccountByID(ctx, input.FromAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("get from-account failed: %w", err)
+	}
+	if userID != fromAccData.OwnerID {
+		return nil, errs.ErrForbidden
+	}
+
+	// Get To Account Data
+	toAccData, err := s.accountRepo.FindAccountByID(ctx, input.ToAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("get to-account failed: %w", err)
+	}
+
+	// Get From Account User
+	fromUserData, err := s.userRepo.FindUserByID(ctx, fromAccData.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("get from-user failed: %w", err)
+	}
+	resp.Sender.FullName = formatAccountFullName(fromUserData.FirstName, fromUserData.LastName)
+
+	// Get To Account User
+	toUserData, err := s.userRepo.FindUserByID(ctx, toAccData.OwnerID)
+	if err != nil {
+		return nil, fmt.Errorf("get to-user failed: %w", err)
+	}
+	resp.Receiver.FullName = formatAccountFullName(toUserData.FirstName, toUserData.LastName)
+	
+	return resp, nil
 }
 
 func formatAccountFullName(firstName, lastName string) string {
